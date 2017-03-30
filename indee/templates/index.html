@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Indee Uploader</title>
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+        <link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" media="screen">
+        <script src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+        <script type="text/javascript" id="mule" src="uploader.js"></script>
+        <style>
+            body {
+                background:
+                url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACYAAAAmCAMAAAHo5CkKAAAABlBMVEUaGhoiIiJbxTWgAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAKZJREFUOMuVVFsOgDAMgvtf2o/pRh2rmMykawf0FQEQAAgOq363c9x5+wm1F04tTl4JTbbqUVofFUv9RFXctSqfia5jAS3WvbN8v7Eur3UFa9d5qmnG+GAgZgNUavKdaA+kfef4OqDm5+pogKUvrn/uuJrMJIKqVwLcXX5itKJb3yPRUyNOdde+us2PRZvtSJ9lomkJWUN+in4NKxt9LBqtpft37K4L/ygCEzzKQAwAAAAASUVORK5CYII=);
+            }
+            .container {
+                margin-top: 5px;
+            }
+            .footer {
+                width: 100%;
+                text-align: center;
+            }
+            .progress {
+                width: 585px;
+                height: 25px;
+                margin: 10px 2px;
+            }
+            .progress .progress-bar {
+                padding-top: 2px;
+                color: white;
+                font-weight: bold;
+                overflow: hidden;
+            }
+            h1 {
+                font-family: "Carme";
+            }
+            #log {
+                width: 586px;
+            }
+            .email {
+                unicode-bidi: bidi-override;
+                direction: rtl;
+            }
+        </style>
+        <script type="text/javascript">
+            var format_size = function(num_bytes) {
+                if(num_bytes <= 1024 * 0.8) {
+                    return num_bytes + " B";
+                } else if(num_bytes <= 1024 * 1024 * 0.8) {
+                    return parseInt(num_bytes / 1024, 10) + "." + parseInt(num_bytes / 1024 * 10, 10) % 10 + " KB";
+                } else if(num_bytes <= 1024 * 1024 * 1024 * 0.8) {
+                    return parseInt(num_bytes / 1024 / 1024, 10) + "." + parseInt(num_bytes / 1024 / 1024 * 10, 10) % 10 + " MB";
+                } else {
+                    return parseInt(num_bytes / 1024 / 1024 / 1024, 10) + "." + parseInt(num_bytes / 1024 / 1024 / 1024 * 10, 10) % 10 + " GB";
+                }
+            }
+            $(function() {
+                var last_update = null;
+                var last_uploaded = null;
+                var settings = {
+
+                    file_input: document.getElementById("file"),
+                    access_key: "{{ aws_access_key }}",
+                    content_type: "{{ mime_type }}",
+                    bucket: "{{ bucket }}",
+                    region: "{{ region }}",
+                    key: "{{ key }}",
+                    {% if ajax_base %}
+                        ajax_base: "{{ ajax_base }}",
+                    {% endif %}
+
+
+                    max_size: 50 * (1 << 30), // 50 gb
+                    on_error: function() {
+                        $('#log').prepend("Error occurred! \n");
+                    },
+                    on_select: function(fileObj) {
+                        $('#log').prepend("File selected\n");
+                        $('.upload-progress').css('width', null);
+                    },
+                    on_start: function(fileObj) {
+                        $('#explanation').animate({'opacity': 0}, 'slow', function() {
+                            $(this).text("Now, let the file upload for a bit (more than 6MB, because it uploads in chunks of 6MB), then refresh the page and select the file again. It will blow your mind :) ");
+                            $(this).animate({'opacity': 1}, 'slow');
+                        });
+                        $('#log').prepend("Upload started\n");
+                    },
+                    on_progress: function(bytes_uploaded, bytes_total) {
+                        if(!last_update || (new Date - last_update) > 1000) {
+                            var percent = bytes_uploaded / bytes_total * 100;
+                            var speed = (bytes_uploaded - last_uploaded) / (new Date - last_update) * 1000;
+                            last_update = new Date;
+                            last_uploaded = bytes_uploaded;
+                            $('.progress .bar').width(percent / 100 * $('.progress').width());
+                            var log = "Upload progress: " + format_size(bytes_uploaded) + " / "
+                                + format_size(bytes_total) + " (" + parseInt(percent, 10) + "." + parseInt(percent * 10, 10) % 10
+                                + "%)";
+                            if(speed) {
+                                log += "; speed: " + format_size(speed) + "/s";
+                            }
+                            $('#log').prepend(log + "\n");
+
+                            var text = parseInt(bytes_uploaded / bytes_total * 100) + "%";
+                            $('.progress .progress-bar').css('width', (bytes_uploaded / bytes_total * 100) + "%").text(text);
+                        }
+                    },
+                    on_init: function() {
+                        $('#log').prepend("Uploader initialized\n");
+                    },
+                    on_complete: function() {
+                        var url = "http://{{ bucket }}.s3.amazonaws.com/" + this.settings.key;
+                        $('#log').prepend("Upload complete!\n");
+                        $('#log').prepend("The file url is " + url + ".\n");
+                        $('.progress').removeClass('active');
+                    },
+                    on_chunk_uploaded: function() {
+                        $('#log').prepend("Chunk finished uploading\n");
+                    }
+                };
+                var upload = indee_upload(settings);
+            });
+        </script>
+        <link href='http://fonts.googleapis.com/css?family=Carme' rel='stylesheet' type='text/css'>
+    </head>
+    <body>
+        <div class="container">
+            <div class="jumbotron">
+                <h1>Indee Uploader</h1>
+
+                <p id="explanation">
+                    Select a Video to upload to indee.tv for awesome experience
+                </p>
+                <br/>
+                <input type="file" id="file" />
+                <div class="progress progress-striped active">
+                    <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0">
+                    </div>
+                </div>
+                <div style="clear: both"></div>
+                <textarea id="log" rows="10" class="form-control"></textarea>
+                <br/>
+            </div>
+        </div>
+        <div class="footer">
+            indee.com Private Property</a>
+        </div>
+    </body>
+</html>
